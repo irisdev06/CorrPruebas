@@ -59,7 +59,7 @@ def generarcol_proveedor(datos: pd.DataFrame) -> pd.DataFrame:
         '6 GRUPO CENTRO DE EXCELENCIA': 'GESTAR INNOVACION',
         '6 GRUPO JUNTAS DE CALIFICACIÓN': 'GESTAR INNOVACION',
         'GERENCIA MEDICA EXCELENCIA': 'GER.MED.EXCELENCIA',
-        'GERENCIA MEDICA JUNTAS DE CALIFICACIÓN': 'GER.MED.JUNTAS DE CALIFICACIÓN'
+        'GERENCIA MEDICA JUNTAS': 'GER.MED.JUNTAS'
     }
 
     datos['Proveedor'] = datos["DEPENDENCIA QUE ENVIA"].map(proveedor_map).fillna("DESCONOCIDO")
@@ -192,7 +192,6 @@ def generar_medio_envio(df_base: pd.DataFrame, workbook) -> None:
     worksheet.autofilter(0, 0, startrow, len(medios_envio) + 1)
 
 # Función para generar la hoja Alerta
-# Función para generar la hoja Alerta
 def generar_alerta(df_courier: pd.DataFrame, workbook) -> None:
     sheet_name = 'Alerta'
     worksheet = workbook.add_worksheet(sheet_name)
@@ -260,21 +259,24 @@ def generar_grafico_pastel(df_base: pd.DataFrame, workbook) -> None:
     
     worksheet.insert_image('F2', img_path)
 
-# Función para crear un gráfico de barras apiladas basado en "FECHA RADICACION" y "Proveedor"
+# Función para crear un gráfico de barras apiladas basado en "FECHA RADICACION", "Proveedor" y "MEDIO DE ENVIO = Mensajero"
 def generar_grafico_barras_apiladas(df_courier: pd.DataFrame, workbook) -> None:
     # Agrupar los datos por FECHA RADICACION y Proveedor
     df_agrupado = df_courier.groupby(['FECHA RADICACION', 'Proveedor']).size().unstack(fill_value=0)
 
     # Crear un gráfico de barras apiladas
-    ax = df_agrupado.plot(kind='bar', stacked=True, figsize=(10, 6))
+    ax = df_agrupado.plot(kind='bar', stacked=True, figsize=(12, 8), width=0.8)
 
     # Añadir título y etiquetas
-    ax.set_title('Cantidad de Registros por Proveedor y Fecha de Radicación', fontsize=14)
+    ax.set_title('Cantidad de Registros por Proveedor y Fecha de Radicación', fontsize=16)
     ax.set_xlabel('Fecha de Radicación', fontsize=12)
     ax.set_ylabel('Cantidad de Registros', fontsize=12)
 
-    # Rotar las etiquetas del eje X para mejor visibilidad
-    plt.xticks(rotation=45)
+    # Mejorar la visibilidad de las fechas
+    plt.xticks(rotation=45, ha='right')  # Rotar las etiquetas para que no se amontonen
+
+    # Asegurarse de que la leyenda no se solape
+    ax.legend(title='Proveedor', bbox_to_anchor=(1.05, 1), loc='upper left')
 
     # Crear un archivo temporal para guardar el gráfico
     with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmpfile:
@@ -283,11 +285,53 @@ def generar_grafico_barras_apiladas(df_courier: pd.DataFrame, workbook) -> None:
         plt.savefig(img_path)
         plt.close()
 
-    # Insertar la imagen en la hoja de Excel
-    sheet_name = 'Alerta'  # Puedes cambiar esto al nombre de la hoja en la que deseas insertar el gráfico
-    worksheet = workbook.get_worksheet_by_name(sheet_name)
-    
-    worksheet.insert_image('F2', img_path)
+    # Crear la hoja "Barras Apiladas" si no existe
+    sheet_name = 'Barras Apiladas'
+    if sheet_name not in workbook.sheetnames:
+        worksheet = workbook.add_worksheet(sheet_name)
+    else:
+        worksheet = workbook.get_worksheet_by_name(sheet_name)
+
+    # Insertar la imagen en la hoja
+    worksheet.insert_image('A1', img_path)
+
+
+# Función para crear un gráfico de barras apiladas basado en "FECHA RADICACION", "Proveedor" y "MEDIO DE ENVIO = Mensajero"
+def generar_grafico_barras_mensajero(df_base: pd.DataFrame, workbook) -> None:
+    # Filtrar los datos donde MEDIO DE ENVIO = 'Mensajero'
+    df_mensajero = df_base[df_base['MEDIO DE ENVIO'] == 'Mensajero']
+
+    # Agrupar los datos por FECHA RADICACION y Proveedor
+    df_agrupado = df_mensajero.groupby(['FECHA RADICACION', 'Proveedor']).size().unstack(fill_value=0)
+
+    # Crear un gráfico de barras apiladas
+    ax = df_agrupado.plot(kind='bar', stacked=True, figsize=(12, 8), width=0.8)
+
+    # Añadir título y etiquetas
+    ax.set_title('Cantidad de Registros de Mensajeros por Proveedor y Fecha de Radicación', fontsize=16)
+    ax.set_xlabel('Fecha de Radicación', fontsize=12)
+    ax.set_ylabel('Cantidad de Registros', fontsize=12)
+
+    # Mejorar la visibilidad de las fechas
+    plt.xticks(rotation=45, ha='right')  # Rotar las etiquetas para que no se amontonen
+
+    # Asegurarse de que la leyenda no se solape
+    ax.legend(title='Proveedor', bbox_to_anchor=(1.05, 1), loc='upper left')
+
+    # Crear un archivo temporal para guardar el gráfico
+    with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmpfile:
+        img_path = tmpfile.name
+        plt.tight_layout()  # Asegurarse de que el gráfico se ajuste bien
+        plt.savefig(img_path)
+        plt.close()
+
+    # Obtener la hoja "Barras Apiladas" para insertar el gráfico
+    worksheet = workbook.get_worksheet_by_name('Barras Apiladas')
+
+    # Insertar la imagen en la hoja
+    worksheet.insert_image('A20', img_path)  # Insertamos el gráfico a partir de la celda A20
+
+# Generar Excel
 # Generar Excel
 def generar_excel(datos: pd.DataFrame) -> bytes:
     output = BytesIO()
@@ -313,9 +357,10 @@ def generar_excel(datos: pd.DataFrame) -> bytes:
         # Llamar a la función para generar la hoja ALERTA
         generar_alerta(df_courier, workbook)
 
-        # Llamar a la función para generar el gráfico de pastel en la hoja MEDIO DE ENVIO
-        generar_grafico_pastel(df_base, workbook)
-        
-        # Llamar a la función para generar el gráfico de barras apiladas en la hoja Alerta
+        # Llamar a la función para generar el gráfico de barras apiladas en la hoja "Barras Apiladas"
         generar_grafico_barras_apiladas(df_courier, workbook)
+
+        # Llamar a la función para generar el gráfico de barras apiladas para "Mensajero" en la misma hoja
+        generar_grafico_barras_mensajero(df_base, workbook)
+
     return output.getvalue()
