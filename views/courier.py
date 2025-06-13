@@ -115,10 +115,14 @@ def generar_excel(datos: pd.DataFrame) -> bytes:
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         workbook = writer.book
 
-        # HOJA: BASE
+        # HOJA: BASE (Unir Consolidado y Courier)
         df_base = pd.concat([df_consolidado, df_courier], ignore_index=True)  # Unir los dos DataFrames
         if not df_base.empty:
             agregar_columnas_vacias(df_base).to_excel(writer, sheet_name='BASE', index=False)
+
+        # HOJA: Courier (mantenerla tal como estaba antes)
+        if not df_courier.empty:
+            agregar_columnas_vacias(df_courier).to_excel(writer, sheet_name='Courier', index=False)
 
             # HOJAS: Un proveedor por hoja
             for nombre_hoja, df_proveedor in obtener_dfs_por_proveedor(df_courier):
