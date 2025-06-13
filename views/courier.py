@@ -107,20 +107,99 @@ def generar_tabla_resumen(datos: pd.DataFrame) -> dict:
 
     return tablas_por_proveedor
 
+#  Hoja BASE
+def generar_hoja_base(datos: pd.DataFrame, writer) -> pd.DataFrame:
+    df_consolidado, df_courier = obtener_dfs_filtrados(datos)
+
+    # Unir los datos de Consolidado y Courier
+    df_base = pd.concat([df_consolidado, df_courier], ignore_index=True)
+    
+    # Si df_base no está vacío, crear la hoja BASE en el archivo Excel
+    if not df_base.empty:
+        agregar_columnas_vacias(df_base).to_excel(writer, sheet_name='BASE', index=False)
+
+    return df_base
+# Función para generar la hoja MEDIO DE ENVIO
+# Función para generar la hoja MEDIO DE ENVIO
+def generar_medio_envio(df_base: pd.DataFrame, workbook) -> None:
+    sheet_name = 'MEDIO DE ENVIO'
+    worksheet = workbook.add_worksheet(sheet_name)
+
+    formato_titulo = workbook.add_format({'bold': True, 'bg_color': "#2480E9"})
+    formato_celdas = workbook.add_format({'text_wrap': True, 'valign': 'top'})
+
+    # Escribir encabezado
+    worksheet.write('A1', 'Proveedor', formato_titulo)
+
+    # Obtener proveedores únicos de la columna 'Proveedor'
+    proveedores = df_base['Proveedor'].dropna().unique()
+
+    # Obtener medios de envío únicos de la columna 'MEDIO DE ENVIO', asegurándonos de capturar todos
+    medios_envio = df_base['MEDIO DE ENVIO'].dropna().unique()
+
+    # Escribir los encabezados de los medios de envío
+    for i, medio_envio in enumerate(medios_envio, start=1):
+        worksheet.write(0, i, medio_envio, formato_titulo)
+
+    # Columna adicional para el Total
+    worksheet.write(0, len(medios_envio) + 1, 'Total', formato_titulo)
+
+    startrow = 1  # Empezamos en la fila 2 para los datos
+
+    # Iterar sobre los proveedores
+    for proveedor in proveedores:
+        df_proveedor = df_base[df_base['Proveedor'] == proveedor]
+        if df_proveedor.empty:
+            continue
+
+        # Escribir proveedor en la columna A
+        worksheet.write(startrow, 0, proveedor, formato_celdas)
+
+        total_proveedor = 0  # Variable para el total del proveedor
+
+        # Calcular los totales por medio de envío
+        for i, medio_envio in enumerate(medios_envio, start=1):
+            # Filtrar por medio de envío
+            df_medio_envio = df_proveedor[df_proveedor['MEDIO DE ENVIO'] == medio_envio]
+
+            # Escribir el total para cada medio de envío
+            total_medio = len(df_medio_envio)
+            worksheet.write(startrow, i, total_medio, formato_celdas)
+
+            # Sumar al total del proveedor
+            total_proveedor += total_medio
+
+        # Escribir el total del proveedor en la columna de "Total"
+        worksheet.write(startrow, len(medios_envio) + 1, total_proveedor, formato_celdas)
+
+        startrow += 1  # Incrementar fila
+
+    # Fila de totales
+    total_row = startrow
+    worksheet.write(total_row, 0, 'Total', formato_titulo)
+
+    # Sumar los totales por cada medio de envío (en la última fila de la tabla)
+    for i in range(1, len(medios_envio) + 1):
+        worksheet.write_formula(total_row, i, f'SUM({chr(65 + i)}2:{chr(65 + i)}{total_row})', formato_celdas)
+
+    # Sumar los totales verticales (la columna Total)
+    worksheet.write_formula(total_row, len(medios_envio) + 1, f'SUM({chr(65 + len(medios_envio) + 1)}2:{chr(65 + len(medios_envio) + 1)}{total_row})', formato_celdas)
+
+    worksheet.autofilter(0, 0, startrow, len(medios_envio) + 1)
+
+
 # Generar Excel
 def generar_excel(datos: pd.DataFrame) -> bytes:
     output = BytesIO()
-    df_consolidado, df_courier = obtener_dfs_filtrados(datos)
-
+    
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         workbook = writer.book
 
-        # HOJA: BASE (Unir Consolidado y Courier)
-        df_base = pd.concat([df_consolidado, df_courier], ignore_index=True)  # Unir los dos DataFrames
-        if not df_base.empty:
-            agregar_columnas_vacias(df_base).to_excel(writer, sheet_name='BASE', index=False)
+        # Llamar a la función para generar la hoja BASE y obtener df_base
+        df_base = generar_hoja_base(datos, writer)
 
         # HOJA: Courier (mantenerla tal como estaba antes)
+        df_consolidado, df_courier = obtener_dfs_filtrados(datos)
         if not df_courier.empty:
             agregar_columnas_vacias(df_courier).to_excel(writer, sheet_name='Courier', index=False)
 
@@ -128,29 +207,7 @@ def generar_excel(datos: pd.DataFrame) -> bytes:
             for nombre_hoja, df_proveedor in obtener_dfs_por_proveedor(df_courier):
                 agregar_columnas_vacias(df_proveedor).to_excel(writer, sheet_name=nombre_hoja, index=False)
 
-            # HOJA: IND COURIER (Resumen mensual por proveedor en una sola hoja)
-            resumenes = generar_tabla_resumen(df_courier)
-            sheet_name = 'IND COURIER'
-            worksheet = workbook.add_worksheet(sheet_name)
-            writer.sheets[sheet_name] = worksheet
-
-            formato_titulo = workbook.add_format({'bold': True, 'bg_color': "#F5F8C9"})
-
-            startrow = 0
-            for proveedor, df_resumen in resumenes.items():
-                worksheet.write(startrow, 0, f"Proveedor: {proveedor}", formato_titulo)
-                startrow += 1
-
-                # Escribir encabezados
-                for col_num, col_name in enumerate(df_resumen.columns):
-                    worksheet.write(startrow, col_num, col_name, formato_titulo)
-
-                # Escribir filas
-                for row_num, row in enumerate(df_resumen.itertuples(index=False), start=startrow + 1):
-                    for col_num, value in enumerate(row):
-                        worksheet.write(row_num, col_num, value)
-
-                worksheet.autofilter(startrow, 0, startrow + len(df_resumen), len(df_resumen.columns) - 1)
-                startrow += len(df_resumen) + 3
+        # Llamar a la función para generar la hoja MEDIO DE ENVIO
+        generar_medio_envio(df_base, workbook)
 
     return output.getvalue()
