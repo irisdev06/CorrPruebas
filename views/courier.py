@@ -113,11 +113,18 @@ def generar_tabla_resumen(datos: pd.DataFrame) -> dict:
 
 #  Hoja BASE
 def generar_hoja_base(datos: pd.DataFrame, writer) -> pd.DataFrame:
+    # Filtrar los datos en "Consolidado" y "Courier"
     df_consolidado, df_courier = obtener_dfs_filtrados(datos)
 
     # Unir los datos de Consolidado y Courier
     df_base = pd.concat([df_consolidado, df_courier], ignore_index=True)
     
+    # Aplicar las funciones de procesamiento de datos a df_base
+    df_base = rellenar_fecha_recibido(df_base)   # Rellenar fecha de recibido con fecha actual
+    df_base = calcular_indicador(df_base)        # Calcular la diferencia de días (INDICADOR)
+    df_base = agregar_termino(df_base)           # Crear la columna TERMINO
+    df_base = generarcol_proveedor(df_base)      # Clasificación por proveedor
+
     # Si df_base no está vacío, crear la hoja BASE en el archivo Excel
     if not df_base.empty:
         agregar_columnas_vacias(df_base).to_excel(writer, sheet_name='BASE', index=False)
