@@ -43,9 +43,8 @@ def agregar_termino(datos: pd.DataFrame) -> pd.DataFrame:
     datos['TERMINO'] = datos['INDICADOR'].apply(evaluar_termino)
     return datos
 
-#Clasificación por Proveedor
+# Clasificación por Proveedor
 def generarcol_proveedor(datos: pd.DataFrame) -> pd.DataFrame:
-    # Mapeo de dependencias a proveedores
     proveedor_map = {
         '3 GRUPO JUNTAS DE CALIFICACIÓN': 'BELISARIO',
         '3 GRUPO CENTRO DE EXCELENCIA': 'BELISARIO',
@@ -55,12 +54,11 @@ def generarcol_proveedor(datos: pd.DataFrame) -> pd.DataFrame:
         '5 GRUPO JUNTAS DE CALIFICACIÓN': 'BELISARIO397',
         '6 GRUPO CENTRO DE EXCELENCIA': 'GESTAR INNOVACION',
         '6 GRUPO JUNTAS DE CALIFICACIÓN': 'GESTAR INNOVACION',
-        'GERENCIA MEDICA EXCELENCIA': 'GER.MED.EXCELENCIA'
+        'GERENCIA MEDICA EXCELENCIA': 'GER.MED.EXCELENCIA',
+        'GERENCIA MEDICA JUNTAS DE CALIFICACIÓN': 'GER.MED.JUNTAS DE CALIFICACIÓN'
     }
 
-    # Usamos map para asignar proveedor, con fallback a None o "DESCONOCIDO"
     datos['Proveedor'] = datos["DEPENDENCIA QUE ENVIA"].map(proveedor_map).fillna("DESCONOCIDO")
-
     return datos
 
 COLUMNAS_EXTRA = ['OPORTUNIDAD FINAL', 'OBSERVACIÓN', 'DEFINICION']
@@ -86,11 +84,9 @@ def obtener_dfs_por_proveedor(df_courier: pd.DataFrame):
 
 # Tablas
 def generar_tabla_resumen(datos: pd.DataFrame) -> dict:
-    # Solo los proveedores clave
     proveedores_objetivo = ['UTMDL', 'GESTAR INNOVACION', 'BELISARIO397', 'BELISARIO']
     datos = datos[datos['Proveedor'].isin(proveedores_objetivo)].copy()
 
-    # Suponemos que 'MES' ya existe en los datos
     tablas_por_proveedor = {}
 
     for proveedor in proveedores_objetivo:
@@ -111,7 +107,6 @@ def generar_tabla_resumen(datos: pd.DataFrame) -> dict:
 
     return tablas_por_proveedor
 
-
 # Generar Excel
 def generar_excel(datos: pd.DataFrame) -> bytes:
     output = BytesIO()
@@ -120,13 +115,10 @@ def generar_excel(datos: pd.DataFrame) -> bytes:
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         workbook = writer.book
 
-        # HOJA: Consolidado
-        if not df_consolidado.empty:
-            agregar_columnas_vacias(df_consolidado).to_excel(writer, sheet_name='Consolidado', index=False)
-
-        # HOJA: Courier
-        if not df_courier.empty:
-            agregar_columnas_vacias(df_courier).to_excel(writer, sheet_name='Courier', index=False)
+        # HOJA: BASE
+        df_base = pd.concat([df_consolidado, df_courier], ignore_index=True)  # Unir los dos DataFrames
+        if not df_base.empty:
+            agregar_columnas_vacias(df_base).to_excel(writer, sheet_name='BASE', index=False)
 
             # HOJAS: Un proveedor por hoja
             for nombre_hoja, df_proveedor in obtener_dfs_por_proveedor(df_courier):
@@ -142,7 +134,6 @@ def generar_excel(datos: pd.DataFrame) -> bytes:
 
             startrow = 0
             for proveedor, df_resumen in resumenes.items():
-                # Escribir título del proveedor
                 worksheet.write(startrow, 0, f"Proveedor: {proveedor}", formato_titulo)
                 startrow += 1
 
@@ -155,10 +146,7 @@ def generar_excel(datos: pd.DataFrame) -> bytes:
                     for col_num, value in enumerate(row):
                         worksheet.write(row_num, col_num, value)
 
-                # Aplicar autofiltro a la tabla recién escrita
                 worksheet.autofilter(startrow, 0, startrow + len(df_resumen), len(df_resumen.columns) - 1)
-
-                # Espacio entre tablas
                 startrow += len(df_resumen) + 3
 
     return output.getvalue()
